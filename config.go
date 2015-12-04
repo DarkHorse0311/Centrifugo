@@ -10,10 +10,10 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/FZambia/go-logger"
 	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/nu7hatch/gouuid"
 	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/spf13/viper"
 	"github.com/centrifugal/centrifugo/libcentrifugo"
-	"github.com/centrifugal/centrifugo/libcentrifugo/logger"
 )
 
 // newConfig creates new libcentrifugo.Config using viper.
@@ -54,9 +54,10 @@ func newConfig() *libcentrifugo.Config {
 	cfg.Publish = viper.GetBool("publish")
 	cfg.Anonymous = viper.GetBool("anonymous")
 	cfg.Presence = viper.GetBool("presence")
+	cfg.JoinLeave = viper.GetBool("join_leave")
 	cfg.HistorySize = viper.GetInt("history_size")
 	cfg.HistoryLifetime = viper.GetInt("history_lifetime")
-	cfg.JoinLeave = viper.GetBool("join_leave")
+	cfg.Recover = viper.GetBool("recover")
 	cfg.Namespaces = namespacesFromConfig(nil)
 
 	return cfg

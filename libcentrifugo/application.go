@@ -4,14 +4,13 @@ package libcentrifugo
 import (
 	"encoding/json"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/FZambia/go-logger"
 	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/gorilla/securecookie"
 	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/nu7hatch/gouuid"
-	"github.com/centrifugal/centrifugo/libcentrifugo/logger"
 )
 
 // Application is a heart of Centrifugo – it internally manages client and admin hubs,
@@ -364,35 +363,6 @@ func (app *Application) pubAdmin(message []byte) error {
 	return app.engine.publish(app.config.AdminChannel, message)
 }
 
-// Message represents client message.
-type Message struct {
-	UID       string           `json:"uid"`
-	Timestamp string           `json:"timestamp"`
-	Info      *ClientInfo      `json:"info"`
-	Channel   Channel          `json:"channel"`
-	Data      *json.RawMessage `json:"data"`
-	Client    ConnID           `json:"client"`
-}
-
-func newMessage(ch Channel, data []byte, client ConnID, info *ClientInfo) (Message, error) {
-	uid, err := uuid.NewV4()
-	if err != nil {
-		return Message{}, err
-	}
-
-	raw := json.RawMessage(data)
-
-	message := Message{
-		UID:       uid.String(),
-		Timestamp: strconv.FormatInt(time.Now().Unix(), 10),
-		Info:      info,
-		Channel:   ch,
-		Data:      &raw,
-		Client:    client,
-	}
-	return message, nil
-}
-
 // Publish sends a message to all clients subscribed on channel with provided data, client and ClientInfo.
 func (app *Application) Publish(ch Channel, data []byte, client ConnID, info *ClientInfo) error {
 
@@ -495,7 +465,12 @@ func (app *Application) pubClient(ch Channel, chOpts ChannelOptions, data []byte
 	}
 
 	if chOpts.HistorySize > 0 && chOpts.HistoryLifetime > 0 {
-		err := app.addHistory(ch, message, int64(chOpts.HistorySize), int64(chOpts.HistoryLifetime))
+		historyOpts := historyOptions{
+			Size:     int64(chOpts.HistorySize),
+			Lifetime: int64(chOpts.HistoryLifetime),
+			Recover:  chOpts.Recover,
+		}
+		err = app.addHistory(ch, message, historyOpts)
 		if err != nil {
 			logger.ERROR.Println(err)
 		}
@@ -789,9 +764,9 @@ func (app *Application) Presence(ch Channel) (map[ConnID]ClientInfo, error) {
 }
 
 // addHistory proxies history message adding to engine.
-func (app *Application) addHistory(ch Channel, message Message, size, lifetime int64) error {
+func (app *Application) addHistory(ch Channel, message Message, opts historyOptions) error {
 	chID := app.channelID(ch)
-	return app.engine.addHistory(chID, message, size, lifetime)
+	return app.engine.addHistory(chID, message, opts)
 }
 
 // History returns a slice of last messages published into project channel.

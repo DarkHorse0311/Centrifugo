@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/FZambia/go-logger"
 	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/spf13/cobra"
 	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/spf13/viper"
 	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/gopkg.in/igm/sockjs-go.v2/sockjs"
 	"github.com/centrifugal/centrifugo/libcentrifugo"
-	"github.com/centrifugal/centrifugo/libcentrifugo/logger"
 	"github.com/tarantool/go-tarantool"
 )
 
@@ -103,14 +103,14 @@ func Main() {
 	var redisPool int
 
 	// Tarantool
-	var ttHost string
-	var ttPort string
-	var ttUser string
-	var ttPassword string
-	var ttPool int
-	var ttTimeoutResponse int
-	var ttTimeoutReconnect int
-	var ttMaxReconnect int
+	var tntHost string
+	var tntPort string
+	var tntUser string
+	var tntPassword string
+	var tntPool int
+	var tntTimeoutResponse int
+	var tntTimeoutReconnect int
+	var tntMaxReconnect int
 
 	var rootCmd = &cobra.Command{
 		Use:   "",
@@ -168,6 +168,7 @@ func Main() {
 			viper.BindEnv("anonymous")
 			viper.BindEnv("join_leave")
 			viper.BindEnv("presence")
+			viper.BindEnv("recover")
 			viper.BindEnv("history_size")
 			viper.BindEnv("history_lifetime")
 
@@ -196,14 +197,14 @@ func Main() {
 			viper.BindPFlag("redis_pool", cmd.Flags().Lookup("redis_pool"))
 
 			// Tarantool.
-			viper.BindPFlag("tt_pool", cmd.Flags().Lookup("tt_pool"))
-			viper.BindPFlag("tt_host", cmd.Flags().Lookup("tt_host"))
-			viper.BindPFlag("tt_port", cmd.Flags().Lookup("tt_port"))
-			viper.BindPFlag("tt_user", cmd.Flags().Lookup("tt_user"))
-			viper.BindPFlag("tt_password", cmd.Flags().Lookup("tt_password"))
-			viper.BindPFlag("tt_timeout_response", cmd.Flags().Lookup("tt_timeout_request"))
-			viper.BindPFlag("tt_timeout_reconnect", cmd.Flags().Lookup("tt_timeout_reconnect"))
-			viper.BindPFlag("tt_max_reconnect", cmd.Flags().Lookup("tt_max_reconnect"))
+			viper.BindPFlag("tnt_pool", cmd.Flags().Lookup("tnt_pool"))
+			viper.BindPFlag("tnt_host", cmd.Flags().Lookup("tnt_host"))
+			viper.BindPFlag("tnt_port", cmd.Flags().Lookup("tnt_port"))
+			viper.BindPFlag("tnt_user", cmd.Flags().Lookup("tnt_user"))
+			viper.BindPFlag("tnt_password", cmd.Flags().Lookup("tnt_password"))
+			viper.BindPFlag("tnt_timeout_response", cmd.Flags().Lookup("tnt_timeout_request"))
+			viper.BindPFlag("tnt_timeout_reconnect", cmd.Flags().Lookup("tnt_timeout_reconnect"))
+			viper.BindPFlag("tnt_max_reconnect", cmd.Flags().Lookup("tnt_max_reconnect"))
 
 			viper.SetConfigFile(configFile)
 
@@ -274,14 +275,14 @@ func Main() {
 			case "tarantool":
 				config := libcentrifugo.TarantoolEngineConfig{
 					PoolConfig: libcentrifugo.TarantoolPoolConfig{
-						Address:  viper.GetString("tt_host") + ":" + viper.GetString("tt_port"),
-						PoolSize: viper.GetInt("tt_pool"),
+						Address:  viper.GetString("tnt_host") + ":" + viper.GetString("tnt_port"),
+						PoolSize: viper.GetInt("tnt_pool"),
 						Opts: tarantool.Opts{
-							Timeout:       time.Duration(viper.GetInt("tt_timeout_response")) * time.Millisecond,
-							Reconnect:     time.Duration(viper.GetInt("tt_timeout_reconnect")) * time.Millisecond,
-							MaxReconnects: uint(viper.GetInt("tt_max_reconnect")),
-							User:          viper.GetString("tt_user"),
-							Pass:          viper.GetString("tt_password"),
+							Timeout:       time.Duration(viper.GetInt("tnt_timeout_response")) * time.Millisecond,
+							Reconnect:     time.Duration(viper.GetInt("tnt_timeout_reconnect")) * time.Millisecond,
+							MaxReconnects: uint(viper.GetInt("tnt_max_reconnect")),
+							User:          viper.GetString("tnt_user"),
+							Pass:          viper.GetString("tnt_password"),
 						},
 					},
 				}
@@ -380,14 +381,14 @@ func Main() {
 	rootCmd.Flags().IntVarP(&redisPool, "redis_pool", "", 256, "Redis pool size (Redis engine)")
 
 	// Tarantool engine
-	rootCmd.Flags().StringVarP(&ttHost, "tt_host", "", "127.0.0.1", "tarantool host (Tarantool engine)")
-	rootCmd.Flags().StringVarP(&ttPort, "tt_port", "", "3301", "tarantool port (Tarantool engine)")
-	rootCmd.Flags().StringVarP(&ttUser, "tt_user", "", "", "tarantool user (Tarantool engine)")
-	rootCmd.Flags().StringVarP(&ttPassword, "tt_password", "", "", "tarantool password (Tarantool engine)")
-	rootCmd.Flags().IntVarP(&ttPool, "tt_pool", "", 2, "tarantool connection pool size (Tarantool engine)")
-	rootCmd.Flags().IntVarP(&ttTimeoutResponse, "tt_timeout_response", "", 500, "timeout to wait response in milliseconds (Tarantool engine)")
-	rootCmd.Flags().IntVarP(&ttTimeoutReconnect, "tt_timeout_reconnect", "", 500, "timeout to wait until reconnection attempt in milliseconds (Tarantool engine)")
-	rootCmd.Flags().IntVarP(&ttMaxReconnect, "tt_max_reconnect", "", 0, "max number of reconnection attempts (Tarantool engine)")
+	rootCmd.Flags().StringVarP(&tntHost, "tnt_host", "", "127.0.0.1", "tarantool host (Tarantool engine)")
+	rootCmd.Flags().StringVarP(&tntPort, "tnt_port", "", "3301", "tarantool port (Tarantool engine)")
+	rootCmd.Flags().StringVarP(&tntUser, "tnt_user", "", "", "tarantool user (Tarantool engine)")
+	rootCmd.Flags().StringVarP(&tntPassword, "tnt_password", "", "", "tarantool password (Tarantool engine)")
+	rootCmd.Flags().IntVarP(&tntPool, "tnt_pool", "", 2, "tarantool connection pool size (Tarantool engine)")
+	rootCmd.Flags().IntVarP(&tntTimeoutResponse, "tnt_timeout_response", "", 500, "timeout to wait response in milliseconds (Tarantool engine)")
+	rootCmd.Flags().IntVarP(&tntTimeoutReconnect, "tnt_timeout_reconnect", "", 500, "timeout to wait until reconnection attempt in milliseconds (Tarantool engine)")
+	rootCmd.Flags().IntVarP(&tntMaxReconnect, "tnt_max_reconnect", "", 0, "max number of reconnection attempts (Tarantool engine)")
 
 	var versionCmd = &cobra.Command{
 		Use:   "version",

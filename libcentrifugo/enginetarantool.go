@@ -6,7 +6,7 @@ import (
 	//"strconv"
 	//"strings"
 
-	"github.com/centrifugal/centrifugo/libcentrifugo/logger"
+	"github.com/centrifugal/centrifugo/Godeps/_workspace/src/github.com/FZambia/go-logger"
 	"github.com/tarantool/go-tarantool"
 )
 
@@ -57,9 +57,9 @@ type TarantoolPoolConfig struct {
 		},
 		"channel":"$3_0",
 		"data": {
-				"Action":"mark",
-				"Data":["00000000000000395684"]
-			},
+			"Action":"mark",
+			"Data":["00000000000000395684"]
+		},
 		"client":"83309b33-deb7-48ff-76c6-04b10e6a6523"
 	},
 	"error":null,
@@ -123,58 +123,60 @@ func (e *TarantoolEngine) publish(chID ChannelID, message []byte) error {
 	return nil
 }
 
-// subscribe on channel
-func (e *TarantoolEngine) subscribe(chID ChannelID) (err error) {
+func (e *TarantoolEngine) subscribe(chID ChannelID) error {
 	conn, err := e.pool.get()
 	if err != nil {
 		logger.ERROR.Printf("subscribe tarantool pool error: %v\n", err.Error())
-		return
+		return err
 	}
 
 	_, err = conn.Call("notification_subscribe", []interface{}{})
+	if err != nil {
+		return err
+	}
 
-	return
+	return nil
 }
 
-// unsubscribe from channel
-func (e *TarantoolEngine) unsubscribe(chID ChannelID) (err error) {
+func (e *TarantoolEngine) unsubscribe(chID ChannelID) error {
 	conn, err := e.pool.get()
 	if err != nil {
 		logger.ERROR.Printf("unsubscribe tarantool pool error: %v\n", err.Error())
-		return
+		return err
 	}
 
 	_, err = conn.Call("notification_unsubscribe", []interface{}{})
-	return
+	return err
 }
 
-// addPresence sets or updates presence info for connection with uid
-func (e *TarantoolEngine) addPresence(chID ChannelID, uid ConnID, info ClientInfo) (err error) {
+func (e *TarantoolEngine) addPresence(chID ChannelID, uid ConnID, info ClientInfo) error {
 	// not implemented
-	return
+	return nil
 }
 
-// removePresence removes presence information for connection with uid
-func (e *TarantoolEngine) removePresence(chID ChannelID, uid ConnID) (err error) {
+func (e *TarantoolEngine) removePresence(chID ChannelID, uid ConnID) error {
 	// not implemented
-	return
+	return nil
 }
 
-// getPresence returns actual presence information for channel
-func (e *TarantoolEngine) presence(chID ChannelID) (result map[ConnID]ClientInfo, err error) {
+func (e *TarantoolEngine) presence(chID ChannelID) (map[ConnID]ClientInfo, error) {
 	// not implemented
-	return
+	return map[ConnID]ClientInfo{}, nil
 }
 
-// addHistory adds message into channel history and takes care about history size
-func (e *TarantoolEngine) addHistory(chID ChannelID, message Message, size, lifetime int64) (err error) {
+func (e *TarantoolEngine) addHistory(chID ChannelID, message Message, opts historyOptions) error {
 	// not implemented
-	return
+	return nil
 }
 
-func (e *TarantoolEngine) history(chID ChannelID) (msgs []Message, err error) {
+func (e *TarantoolEngine) history(chID ChannelID) ([]Message, error) {
 	// not implemented
 	return []Message{}, nil
+}
+
+func (e *TarantoolEngine) lastMessageID(chID ChannelID) (MessageID, error) {
+	// not implemented
+	return MessageID(""), nil
 }
 
 func (e *TarantoolEngine) channels() ([]ChannelID, error) {

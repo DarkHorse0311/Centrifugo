@@ -53,6 +53,7 @@ type Application struct {
 	metrics *metricsRegistry
 }
 
+// Stats contains state and metrics information from running Centrifugo nodes.
 type Stats struct {
 	Nodes           []NodeInfo `json:"nodes"`
 	MetricsInterval int64      `json:"metrics_interval"`
@@ -60,7 +61,7 @@ type Stats struct {
 
 // NodeInfo contains information and statistics about Centrifugo node.
 type NodeInfo struct {
-	Uid        string `json:"uid"`
+	UID        string `json:"uid"`
 	Name       string `json:"name"`
 	Goroutines int    `json:"num_goroutine"`
 	Clients    int    `json:"num_clients"`
@@ -352,7 +353,8 @@ func (app *Application) pubControl(method string, params []byte) error {
 
 	app.RLock()
 	defer app.RUnlock()
-	return app.engine.publish(app.config.ControlChannel, messageBytes)
+	_, err = app.engine.publish(app.config.ControlChannel, messageBytes)
+	return err
 }
 
 // pubAdmin publishes message into admin channel so all running
@@ -360,7 +362,8 @@ func (app *Application) pubControl(method string, params []byte) error {
 func (app *Application) pubAdmin(message []byte) error {
 	app.RLock()
 	defer app.RUnlock()
-	return app.engine.publish(app.config.AdminChannel, message)
+	_, err := app.engine.publish(app.config.AdminChannel, message)
+	return err
 }
 
 // Publish sends a message to all clients subscribed on channel with provided data, client and ClientInfo.
@@ -427,7 +430,6 @@ func (app *Application) publish(ch Channel, data []byte, client ConnID, info *Cl
 // pubClient publishes message into channel so all running nodes
 // will receive it and will send to all clients on node subscribed on channel.
 func (app *Application) pubClient(ch Channel, chOpts ChannelOptions, data []byte, client ConnID, info *ClientInfo) error {
-
 	message, err := newMessage(ch, data, client, info)
 	if err != nil {
 		return err
@@ -459,18 +461,18 @@ func (app *Application) pubClient(ch Channel, chOpts ChannelOptions, data []byte
 		return err
 	}
 
-	err = app.engine.publish(chID, byteMessage)
+	hasCurrentSubscribers, err := app.engine.publish(chID, byteMessage)
 	if err != nil {
 		return err
 	}
 
 	if chOpts.HistorySize > 0 && chOpts.HistoryLifetime > 0 {
-		historyOpts := historyOptions{
-			Size:     int64(chOpts.HistorySize),
-			Lifetime: int64(chOpts.HistoryLifetime),
-			Recover:  chOpts.Recover,
+		histOpts := addHistoryOpts{
+			Size:         chOpts.HistorySize,
+			Lifetime:     chOpts.HistoryLifetime,
+			DropInactive: (chOpts.HistoryDropInactive && !hasCurrentSubscribers),
 		}
-		err = app.addHistory(ch, message, historyOpts)
+		err = app.addHistory(ch, message, histOpts)
 		if err != nil {
 			logger.ERROR.Println(err)
 		}
@@ -494,7 +496,8 @@ func (app *Application) pubJoinLeave(ch Channel, method string, info ClientInfo)
 	if err != nil {
 		return err
 	}
-	return app.engine.publish(chID, byteMessage)
+	_, err = app.engine.publish(chID, byteMessage)
+	return err
 }
 
 // pubPing sends control ping message to all nodes - this message
@@ -504,7 +507,7 @@ func (app *Application) pubPing() error {
 	defer app.RUnlock()
 	app.metrics.RLock()
 	info := NodeInfo{
-		Uid:        app.uid,
+		UID:        app.uid,
 		Name:       app.config.Name,
 		Clients:    app.nClients(),
 		Unique:     app.nUniqueClients(),
@@ -569,7 +572,7 @@ func (app *Application) pingCmd(cmd *pingControlCommand) error {
 	info := cmd.Info
 	info.updated = time.Now().Unix()
 	app.nodesMu.Lock()
-	app.nodes[info.Uid] = info
+	app.nodes[info.UID] = info
 	app.nodesMu.Unlock()
 	return nil
 }
@@ -764,7 +767,7 @@ func (app *Application) Presence(ch Channel) (map[ConnID]ClientInfo, error) {
 }
 
 // addHistory proxies history message adding to engine.
-func (app *Application) addHistory(ch Channel, message Message, opts historyOptions) error {
+func (app *Application) addHistory(ch Channel, message Message, opts addHistoryOpts) error {
 	chID := app.channelID(ch)
 	return app.engine.addHistory(chID, message, opts)
 }
@@ -787,11 +790,23 @@ func (app *Application) History(ch Channel) ([]Message, error) {
 
 	chID := app.channelID(ch)
 
-	history, err := app.engine.history(chID)
+	history, err := app.engine.history(chID, historyOpts{})
 	if err != nil {
 		return []Message{}, ErrInternalServerError
 	}
 	return history, nil
+}
+
+func (app *Application) lastMessageID(ch Channel) (MessageID, error) {
+	chID := app.channelID(ch)
+	history, err := app.engine.history(chID, historyOpts{Limit: 1})
+	if err != nil {
+		return MessageID(""), err
+	}
+	if len(history) == 0 {
+		return MessageID(""), nil
+	}
+	return history[0].UID, nil
 }
 
 // privateChannel checks if channel private and therefore subscription
@@ -864,7 +879,9 @@ func (app *Application) nUniqueClients() int {
 }
 
 const (
-	AuthTokenKey   = "token"
+	// AuthTokenKey is a key for admin authorization token.
+	AuthTokenKey = "token"
+	// AuthTokenValue is a value for secure admin authorization token.
 	AuthTokenValue = "authorized"
 )
 
@@ -884,8 +901,13 @@ func (app *Application) adminAuthToken() (string, error) {
 func (app *Application) checkAdminAuthToken(token string) error {
 
 	app.RLock()
+	insecure := app.config.InsecureWeb
 	secret := app.config.WebSecret
 	app.RUnlock()
+
+	if insecure {
+		return nil
+	}
 
 	if secret == "" {
 		logger.ERROR.Println("provide web_secret in configuration")

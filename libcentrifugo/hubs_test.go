@@ -9,8 +9,8 @@ import (
 )
 
 type testClientConn struct {
-	Cid      ConnID
-	Uid      UserID
+	CID      ConnID
+	UID      UserID
 	Channels []Channel
 
 	Messages [][]byte
@@ -20,17 +20,17 @@ type testClientConn struct {
 
 func newTestUserCC() *testClientConn {
 	return &testClientConn{
-		Cid:      "test uid",
-		Uid:      "test user",
+		CID:      "test uid",
+		UID:      "test user",
 		Channels: []Channel{"test"},
 	}
 }
 func (c *testClientConn) uid() ConnID {
-	return c.Cid
+	return c.CID
 }
 
 func (c *testClientConn) user() UserID {
-	return c.Uid
+	return c.UID
 }
 
 func (c *testClientConn) channels() []Channel {
@@ -104,11 +104,15 @@ func TestSubHub(t *testing.T) {
 	}
 	assert.Equal(t, stringInSlice("test1", channels), true)
 	assert.Equal(t, stringInSlice("test2", channels), true)
+	assert.True(t, h.hasSubscribers(ChannelID("test1")))
+	assert.True(t, h.hasSubscribers(ChannelID("test2")))
 	err := h.broadcast("test1", []byte("message"))
 	assert.Equal(t, err, nil)
 	h.removeSub("test1", c)
 	h.removeSub("test2", c)
 	assert.Equal(t, len(h.subs), 0)
+	assert.False(t, h.hasSubscribers(ChannelID("test1")))
+	assert.False(t, h.hasSubscribers(ChannelID("test2")))
 }
 
 func TestAdminHub(t *testing.T) {
@@ -129,8 +133,8 @@ func setupHub(users, chanUser, totChannels int) (*clientHub, []*testClientConn) 
 	h := newClientHub()
 	for i := range uC {
 		c := newTestUserCC()
-		c.Uid = UserID(fmt.Sprintf("uid-%d", i))
-		c.Cid = ConnID(fmt.Sprintf("cid-%d", i))
+		c.UID = UserID(fmt.Sprintf("uid-%d", i))
+		c.CID = ConnID(fmt.Sprintf("cid-%d", i))
 		c.Channels = make([]Channel, 0)
 		for j := 0; j < chanUser; j++ {
 			ch := ChannelID(fmt.Sprintf("chan-%d", (j+i*chanUser)%totChannels))

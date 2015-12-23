@@ -14,6 +14,45 @@ import (
 	"github.com/centrifugal/centrifugo/libcentrifugo/auth"
 )
 
+// HandlerFlag is a bit mask of handlers that must be enabled in mux.
+type HandlerFlag int
+
+const (
+	// HandlerRawWS enables Raw Websocket handler.
+	HandlerRawWS HandlerFlag = 1 << iota
+	// HandlerSockJS enables SockJS handler.
+	HandlerSockJS
+	// HandlerAPI enables API handler.
+	HandlerAPI
+	// HandlerAdmin enables admin handlers - admin websocket, web interface endpoints.
+	HandlerAdmin
+	// HandlerDebug enables debug handlers.
+	HandlerDebug
+)
+
+var handlerText = map[HandlerFlag]string{
+	HandlerRawWS:  "raw websocket",
+	HandlerSockJS: "SockJS",
+	HandlerAPI:    "API",
+	HandlerAdmin:  "admin",
+	HandlerDebug:  "debug",
+}
+
+func (flags HandlerFlag) String() string {
+	flagsOrdered := []HandlerFlag{HandlerRawWS, HandlerSockJS, HandlerAPI, HandlerAdmin, HandlerDebug}
+	endpoints := []string{}
+	for _, flag := range flagsOrdered {
+		text, ok := handlerText[flag]
+		if !ok {
+			continue
+		}
+		if flags&flag != 0 {
+			endpoints = append(endpoints, text)
+		}
+	}
+	return strings.Join(endpoints, ", ")
+}
+
 // MuxOptions contain various options for DefaultMux.
 type MuxOptions struct {
 	Prefix        string
@@ -21,10 +60,12 @@ type MuxOptions struct {
 	WebPath       string
 	WebFS         http.FileSystem
 	SockjsOptions sockjs.Options
+	HandlerFlags  HandlerFlag
 }
 
 // DefaultMuxOptions contain default SockJS options.
 var DefaultMuxOptions = MuxOptions{
+	HandlerFlags:  HandlerRawWS | HandlerSockJS | HandlerAPI | HandlerAdmin,
 	SockjsOptions: sockjs.DefaultOptions,
 }
 
@@ -37,43 +78,50 @@ func DefaultMux(app *Application, muxOpts MuxOptions) *http.ServeMux {
 	web := muxOpts.Web
 	webPath := muxOpts.WebPath
 	webFS := muxOpts.WebFS
+	flags := muxOpts.HandlerFlags
 
-	app.RLock()
-	debug := app.config.Debug
-	app.RUnlock()
-
-	if debug {
+	if flags&HandlerDebug != 0 {
 		mux.Handle(prefix+"/debug/pprof/", http.HandlerFunc(pprof.Index))
 		mux.Handle(prefix+"/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
 		mux.Handle(prefix+"/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
 		mux.Handle(prefix+"/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
 	}
 
-	// register raw Websocket endpoint
-	mux.Handle(prefix+"/connection/websocket", app.Logged(app.WrapShutdown(http.HandlerFunc(app.RawWebsocketHandler))))
+	if flags&HandlerRawWS != 0 {
+		// register raw Websocket endpoint
+		mux.Handle(prefix+"/connection/websocket", app.Logged(app.WrapShutdown(http.HandlerFunc(app.RawWebsocketHandler))))
+	}
 
-	// register SockJS endpoints
-	sjsh := NewSockJSHandler(app, prefix+"/connection", muxOpts.SockjsOptions)
-	mux.Handle(prefix+"/connection/", app.Logged(app.WrapShutdown(sjsh)))
+	if flags&HandlerSockJS != 0 {
+		// register SockJS endpoints
+		sjsh := NewSockJSHandler(app, prefix+"/connection", muxOpts.SockjsOptions)
+		mux.Handle(prefix+"/connection/", app.Logged(app.WrapShutdown(sjsh)))
+	}
 
-	// register HTTP API endpoint
-	mux.Handle(prefix+"/api/", app.Logged(app.WrapShutdown(http.HandlerFunc(app.APIHandler))))
+	if flags&HandlerAPI != 0 {
+		// register HTTP API endpoint
+		mux.Handle(prefix+"/api/", app.Logged(app.WrapShutdown(http.HandlerFunc(app.APIHandler))))
+	}
 
-	// register admin web interface API endpoints
-	mux.Handle(prefix+"/auth/", app.Logged(http.HandlerFunc(app.AuthHandler)))
-	mux.Handle(prefix+"/info/", app.Logged(app.Authenticated(http.HandlerFunc(app.InfoHandler))))
-	mux.Handle(prefix+"/action/", app.Logged(app.Authenticated(http.HandlerFunc(app.ActionHandler))))
-
-	// optionally serve admin web interface
-	if web {
+	if flags&HandlerAdmin != 0 {
+		// register admin websocket endpoint
 		mux.Handle(prefix+"/socket", app.Logged(http.HandlerFunc(app.AdminWebsocketHandler)))
 
-		if webPath != "" {
-			webPrefix := prefix + "/"
-			mux.Handle(webPrefix, http.StripPrefix(webPrefix, http.FileServer(http.Dir(webPath))))
-		} else if webFS != nil {
-			webPrefix := prefix + "/"
-			mux.Handle(webPrefix, http.StripPrefix(webPrefix, http.FileServer(webFS)))
+		// optionally serve admin web interface
+		if web {
+			// register admin web interface API endpoints
+			mux.Handle(prefix+"/auth/", app.Logged(http.HandlerFunc(app.AuthHandler)))
+			mux.Handle(prefix+"/info/", app.Logged(app.Authenticated(http.HandlerFunc(app.InfoHandler))))
+			mux.Handle(prefix+"/action/", app.Logged(app.Authenticated(http.HandlerFunc(app.ActionHandler))))
+
+			// serve web interface single-page application
+			if webPath != "" {
+				webPrefix := prefix + "/"
+				mux.Handle(webPrefix, http.StripPrefix(webPrefix, http.FileServer(http.Dir(webPath))))
+			} else if webFS != nil {
+				webPrefix := prefix + "/"
+				mux.Handle(webPrefix, http.StripPrefix(webPrefix, http.FileServer(webFS)))
+			}
 		}
 	}
 
@@ -234,8 +282,8 @@ func (app *Application) RawWebsocketHandler(w http.ResponseWriter, r *http.Reque
 }
 
 var (
-	arrayJsonPrefix  byte = '['
-	objectJsonPrefix byte = '{'
+	arrayJSONPrefix  byte = '['
+	objectJSONPrefix byte = '{'
 )
 
 func cmdFromAPIMsg(msg []byte) ([]apiCommand, error) {
@@ -244,7 +292,7 @@ func cmdFromAPIMsg(msg []byte) ([]apiCommand, error) {
 	firstByte := msg[0]
 
 	switch firstByte {
-	case objectJsonPrefix:
+	case objectJSONPrefix:
 		// single command request
 		var command apiCommand
 		err := json.Unmarshal(msg, &command)
@@ -252,7 +300,7 @@ func cmdFromAPIMsg(msg []byte) ([]apiCommand, error) {
 			return nil, err
 		}
 		commands = append(commands, command)
-	case arrayJsonPrefix:
+	case arrayJSONPrefix:
 		// array of commands received
 		err := json.Unmarshal(msg, &commands)
 		if err != nil {
@@ -352,14 +400,24 @@ func (app *Application) APIHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonResp)
 }
 
+const insecureWebToken = "insecure"
+
 // AuthHandler allows to get admin web interface token.
 func (app *Application) AuthHandler(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	app.RLock()
+	insecure := app.config.InsecureWeb
 	webPassword := app.config.WebPassword
 	webSecret := app.config.WebSecret
 	app.RUnlock()
+
+	if insecure {
+		w.Header().Set("Content-Type", "application/json")
+		resp := map[string]string{"token": insecureWebToken}
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
 
 	if webPassword == "" || webSecret == "" {
 		logger.ERROR.Println("web_password and web_secret must be set in configuration")
@@ -433,7 +491,7 @@ func (app *Application) Logged(h http.Handler) http.Handler {
 	return http.HandlerFunc(fn)
 }
 
-// InfoHahdler allows to get actual information about Centrifugo nodes running.
+// InfoHandler allows to get actual information about Centrifugo nodes running.
 func (app *Application) InfoHandler(w http.ResponseWriter, r *http.Request) {
 	app.nodesMu.Lock()
 	defer app.nodesMu.Unlock()
@@ -526,6 +584,13 @@ var upgrader = &websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 
 // AdminWebsocketHandler handles admin websocket connections.
 func (app *Application) AdminWebsocketHandler(w http.ResponseWriter, r *http.Request) {
+	app.RLock()
+	web := app.config.Web
+	app.RUnlock()
+	if !web {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return

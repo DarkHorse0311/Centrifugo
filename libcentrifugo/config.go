@@ -49,6 +49,11 @@ type ChannelOptions struct {
 	// from history and must be used with reasonable HistorySize and HistoryLifetime
 	// configuration.
 	Recover bool `json:"recover"`
+
+	// HistoryDropInactive enables an optimization where history is only saved for channels that have at
+	// least one active subscriber. This can give a huge memory saving, with only minor edgecases that are
+	// different from without it as noted on https://github.com/centrifugal/centrifugo/issues/50.
+	HistoryDropInactive bool `mapstructure:"history_drop_inactive" json:"history_drop_inactive"`
 }
 
 // NamespaceKey is a name of namespace unique for project.
@@ -76,6 +81,8 @@ type Config struct {
 	// Debug turns on application debug mode.
 	Debug bool
 
+	// Web shows if admin web interface enabled or not
+	Web bool
 	// WebPassword is an admin web interface password.
 	WebPassword string
 	// WebSecret is a secret to generate auth token for admin web interface.
@@ -154,6 +161,11 @@ type Config struct {
 	// to sign every request - for example if you closed API endpoint with firewall
 	// or you want to play with API commands from command line using CURL.
 	InsecureAPI bool
+	// InsecureWeb turns on insecure mode for admin web interface handler endpoints. This
+	// means that no web password and web secret will be used to protect access to web admin
+	// resources. Use this in development or protect admin resources with firewall rules
+	// in production.
+	InsecureWeb bool
 
 	// Secret is a secret key, used to sign API requests and client connection tokens.
 	Secret string
@@ -202,14 +214,13 @@ func (c *Config) Validate() error {
 func (c *Config) channelOpts(nk NamespaceKey) (ChannelOptions, error) {
 	if nk == NamespaceKey("") {
 		return c.ChannelOptions, nil
-	} else {
-		for _, n := range c.Namespaces {
-			if n.Name == nk {
-				return n.ChannelOptions, nil
-			}
-		}
-		return ChannelOptions{}, ErrNamespaceNotFound
 	}
+	for _, n := range c.Namespaces {
+		if n.Name == nk {
+			return n.ChannelOptions, nil
+		}
+	}
+	return ChannelOptions{}, ErrNamespaceNotFound
 }
 
 const (

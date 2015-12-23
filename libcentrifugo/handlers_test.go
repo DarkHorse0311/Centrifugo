@@ -48,8 +48,21 @@ func TestRawWsHandler(t *testing.T) {
 	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
 }
 
+func TestAdminWebsocketHandlerNotFound(t *testing.T) {
+	app := testApp()
+	opts := DefaultMuxOptions
+	opts.Web = true
+	mux := DefaultMux(app, opts)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	url := "ws" + server.URL[4:]
+	_, resp, _ := websocket.DefaultDialer.Dial(url+"/socket", nil)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
 func TestAdminWebsocketHandler(t *testing.T) {
 	app := testApp()
+	app.config.Web = true // admin websocket available only if web enabled at moment
 	opts := DefaultMuxOptions
 	opts.Web = true
 	mux := DefaultMux(app, opts)
@@ -68,9 +81,10 @@ func TestAdminWebsocketHandler(t *testing.T) {
 	assert.Equal(t, nil, err)
 	assert.NotEqual(t, nil, conn)
 	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
+
 }
 
-func getNPublishJson(channel string, n int) []byte {
+func getNPublishJSON(channel string, n int) []byte {
 	commands := make([]map[string]interface{}, n)
 	command := map[string]interface{}{
 		"method": "publish",
@@ -94,7 +108,7 @@ func BenchmarkAPIHandler(b *testing.B) {
 	nMessages := nClients * nCommands
 	app := testMemoryAppWithClientsSynchronized(nChannels, nClients, nMessages, sent)
 	b.Logf("num channels: %v, num clients: %v, num unique clients %v, num commands: %v", app.clients.nChannels(), app.clients.nClients(), app.clients.nUniqueClients(), nCommands)
-	jsonData := getNPublishJson("channel-0", nCommands)
+	jsonData := getNPublishJSON("channel-0", nCommands)
 	sign := auth.GenerateApiSign("secret", jsonData)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

@@ -14,8 +14,8 @@ func (e *testEngine) run() error {
 	return nil
 }
 
-func (e *testEngine) publish(chID ChannelID, message []byte) error {
-	return nil
+func (e *testEngine) publish(chID ChannelID, message []byte) (bool, error) {
+	return true, nil
 }
 
 func (e *testEngine) subscribe(chID ChannelID) error {
@@ -38,18 +38,14 @@ func (e *testEngine) presence(chID ChannelID) (map[ConnID]ClientInfo, error) {
 	return map[ConnID]ClientInfo{}, nil
 }
 
-func (e *testEngine) addHistory(chID ChannelID, message Message, opts historyOptions) error {
+func (e *testEngine) addHistory(chID ChannelID, message Message, opts addHistoryOpts) error {
 	return nil
 }
 
-func (e *testEngine) history(chID ChannelID) ([]Message, error) {
+func (e *testEngine) history(chID ChannelID, opts historyOpts) ([]Message, error) {
 	return []Message{}, nil
 }
 
 func (e *testEngine) channels() ([]ChannelID, error) {
 	return []ChannelID{}, nil
-}
-
-func (e *testEngine) lastMessageID(ch ChannelID) (MessageID, error) {
-	return MessageID(""), nil
 }

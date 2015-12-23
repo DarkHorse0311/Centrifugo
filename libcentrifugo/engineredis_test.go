@@ -2,6 +2,7 @@ package libcentrifugo
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -15,12 +16,13 @@ type testRedisConn struct {
 }
 
 const (
-	testRedisHost     = "127.0.0.1"
-	testRedisPort     = "6379"
-	testRedisPassword = ""
-	testRedisDB       = "9"
-	testRedisURL      = "redis://:@127.0.0.1:6379/9"
-	testRedisPoolSize = 5
+	testRedisHost         = "127.0.0.1"
+	testRedisPort         = "6379"
+	testRedisPassword     = ""
+	testRedisDB           = "9"
+	testRedisURL          = "redis://:@127.0.0.1:6379/9"
+	testRedisPoolSize     = 5
+	testRedisNumAPIShards = 4
 )
 
 func (t testRedisConn) close() error {
@@ -65,7 +67,17 @@ func dial() testRedisConn {
 }
 
 func testRedisEngine(app *Application) *RedisEngine {
-	e := NewRedisEngine(app, testRedisHost, testRedisPort, testRedisPassword, testRedisDB, testRedisURL, true, testRedisPoolSize)
+	redisConf := &RedisEngineConfig{
+		Host:         testRedisHost,
+		Port:         testRedisPort,
+		Password:     testRedisPassword,
+		DB:           testRedisDB,
+		URL:          testRedisURL,
+		PoolSize:     testRedisPoolSize,
+		API:          true,
+		NumAPIShards: testRedisNumAPIShards,
+	}
+	e := NewRedisEngine(app, redisConf)
 	return e
 }
 
@@ -78,24 +90,83 @@ func TestRedisEngine(t *testing.T) {
 	assert.Equal(t, nil, err)
 	app.SetEngine(e)
 	assert.Equal(t, e.name(), "Redis")
-	assert.Equal(t, nil, e.publish(ChannelID("channel"), []byte("{}")))
+
+	hasActiveSubscribers, err := e.publish(ChannelID("channel"), []byte("{}"))
+	assert.False(t, hasActiveSubscribers)
+	assert.Equal(t, nil, err)
 	assert.Equal(t, nil, e.subscribe(ChannelID("channel")))
+	// Now we've subscribed...
+	hasActiveSubscribers, err = e.publish(ChannelID("channel"), []byte("{}"))
+	assert.True(t, hasActiveSubscribers)
 	assert.Equal(t, nil, e.unsubscribe(ChannelID("channel")))
+
+	// Now we've unsubscribed again..
+	hasActiveSubscribers, err = e.publish(ChannelID("channel"), []byte("{}"))
+	assert.False(t, hasActiveSubscribers)
+
+	// test adding presence
 	assert.Equal(t, nil, e.addPresence(ChannelID("channel"), "uid", ClientInfo{}))
+
+	// test getting presence
 	p, err := e.presence(ChannelID("channel"))
 	assert.Equal(t, nil, err)
 	assert.Equal(t, 1, len(p))
-	assert.Equal(t, nil, e.addHistory(ChannelID("channel"), Message{}, historyOptions{1, 1, false}))
-	h, err := e.history(ChannelID("channel"))
-	assert.Equal(t, nil, err)
-	assert.Equal(t, 1, len(h))
+
+	// test removing presence
 	err = e.removePresence(ChannelID("channel"), "uid")
 	assert.Equal(t, nil, err)
+
+	// test adding history
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel"), Message{}, addHistoryOpts{4, 1, false}))
+	h, err := e.history(ChannelID("channel"), historyOpts{})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 1, len(h))
+
+	// test history limit
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel"), Message{}, addHistoryOpts{4, 1, false}))
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel"), Message{}, addHistoryOpts{4, 1, false}))
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel"), Message{}, addHistoryOpts{4, 1, false}))
+	h, err = e.history(ChannelID("channel"), historyOpts{Limit: 2})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 2, len(h))
+
+	// test history limit greater than history size
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel"), Message{}, addHistoryOpts{1, 1, false}))
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel"), Message{}, addHistoryOpts{1, 1, false}))
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel"), Message{}, addHistoryOpts{1, 1, false}))
+	h, err = e.history(ChannelID("channel"), historyOpts{Limit: 2})
+
+	// HistoryDropInactive tests - new channel to avoid conflicts with test above
+	// 1. add history with DropInactive = true should be a no-op if history is empty
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel-2"), Message{}, addHistoryOpts{2, 5, true}))
+	h, err = e.history(ChannelID("channel-2"), historyOpts{})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 0, len(h))
+
+	// 2. add history with DropInactive = false should always work
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel-2"), Message{}, addHistoryOpts{2, 5, false}))
+	h, err = e.history(ChannelID("channel-2"), historyOpts{})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 1, len(h))
+
+	// 3. add with DropInactive = true should work immediately since there should be something in history
+	// for 5 seconds from above
+	assert.Equal(t, nil, e.addHistory(ChannelID("channel-2"), Message{}, addHistoryOpts{2, 5, true}))
+	h, err = e.history(ChannelID("channel-2"), historyOpts{})
+	assert.Equal(t, nil, err)
+	assert.Equal(t, 2, len(h))
+
+	// test API
 	apiKey := e.app.config.ChannelPrefix + "." + "api"
 	_, err = c.Conn.Do("LPUSH", apiKey, []byte("{}"))
 	assert.Equal(t, nil, err)
-	_, err = c.Conn.Do("LPUSH", apiKey, []byte("{\"project\": \"test1\"}"))
-	assert.Equal(t, nil, err)
+
+	// test API shards
+	for i := 0; i < testRedisNumAPIShards; i++ {
+		queueKey := fmt.Sprintf("%s.%d", apiKey, i)
+		_, err = c.Conn.Do("LPUSH", queueKey, []byte("{}"))
+		assert.Equal(t, nil, err)
+	}
 }
 
 func TestRedisChannels(t *testing.T) {
@@ -109,20 +180,4 @@ func TestRedisChannels(t *testing.T) {
 	channels, err = app.engine.channels()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, 10, len(channels))
-}
-
-func TestRedisLastMessageID(t *testing.T) {
-	c := dial()
-	defer c.close()
-	app := testRedisApp()
-	ch := Channel("test")
-	chID := app.channelID(ch)
-	uid, err := app.engine.lastMessageID(chID)
-	assert.Equal(t, MessageID(""), uid)
-	message, _ := newMessage(ch, []byte("{}"), ConnID(""), nil)
-	err = app.addHistory(ch, message, historyOptions{10, 10, true})
-	assert.Equal(t, nil, err)
-	uid, err = app.engine.lastMessageID(chID)
-	assert.Equal(t, nil, err)
-	assert.Equal(t, message.UID, uid)
 }

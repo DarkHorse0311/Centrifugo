@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	// CloseStatus is status code set when closing client connections.
 	CloseStatus = 3000
 )
 
@@ -44,8 +45,8 @@ type client struct {
 type ClientInfo struct {
 	User        UserID           `json:"user"`
 	Client      ConnID           `json:"client"`
-	DefaultInfo *json.RawMessage `json:"default_info"`
-	ChannelInfo *json.RawMessage `json:"channel_info"`
+	DefaultInfo *json.RawMessage `json:"default_info,omitempty"`
+	ChannelInfo *json.RawMessage `json:"channel_info,omitempty"`
 }
 
 // newClient creates new ready to communicate client.
@@ -88,10 +89,9 @@ func (c *client) sendMessages() {
 			logger.INFO.Println("error sending to", c.uid(), err.Error())
 			c.close("error sending message")
 			return
-		} else {
-			c.app.metrics.numMsgSent.Inc(1)
-			c.app.metrics.bytesClientOut.Inc(int64(len(msg)))
 		}
+		c.app.metrics.numMsgSent.Inc(1)
+		c.app.metrics.bytesClientOut.Inc(int64(len(msg)))
 	}
 }
 
@@ -170,7 +170,7 @@ func (c *client) channels() []Channel {
 	i := 0
 	for k := range c.Channels {
 		keys[i] = k
-		i += 1
+		i++
 	}
 	return keys
 }
@@ -229,7 +229,7 @@ func (c *client) clean() error {
 
 	if len(c.Channels) > 0 {
 		// unsubscribe from all channels
-		for channel, _ := range c.Channels {
+		for channel := range c.Channels {
 			cmd := &UnsubscribeClientCommand{
 				Channel: channel,
 			}
@@ -297,7 +297,7 @@ func cmdFromClientMsg(msgBytes []byte) ([]clientCommand, error) {
 	var commands []clientCommand
 	firstByte := msgBytes[0]
 	switch firstByte {
-	case objectJsonPrefix:
+	case objectJSONPrefix:
 		// single command request
 		var command clientCommand
 		err := json.Unmarshal(msgBytes, &command)
@@ -305,7 +305,7 @@ func cmdFromClientMsg(msgBytes []byte) ([]clientCommand, error) {
 			return nil, err
 		}
 		commands = append(commands, command)
-	case arrayJsonPrefix:
+	case arrayJSONPrefix:
 		// array of commands received
 		err := json.Unmarshal(msgBytes, &commands)
 		if err != nil {
@@ -333,7 +333,29 @@ func (c *client) message(msg []byte) error {
 		return ErrInvalidMessage
 	}
 	err = c.handleCommands(commands)
+	if err != nil {
+		disconnectErr := c.disconnect("error handling message")
+		if disconnectErr != nil {
+			logger.ERROR.Println(disconnectErr)
+		}
+		// Sleep for a while to give client a chance to receive disconnect
+		// message and process it. Connection will be closed then.
+		time.Sleep(time.Second)
+	}
 	return err
+}
+
+func (c *client) disconnect(reason string) error {
+	resp := newResponse("disconnect")
+	resp.Body = &DisconnectBody{
+		Reason:    reason,
+		Reconnect: false,
+	}
+	jsonResp, err := json.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	return c.send(jsonResp)
 }
 
 func (c *client) handleCommands(commands []clientCommand) error {
@@ -530,7 +552,7 @@ func (c *client) connectCmd(cmd *ConnectClientCommand) (*response, error) {
 	body.Expires = connLifetime > 0
 	body.TTL = connLifetime
 
-	var timeToExpire int64 = 0
+	var timeToExpire int64
 
 	if connLifetime > 0 && !insecure {
 		timeToExpire = c.timestamp + connLifetime - time.Now().Unix()
@@ -751,8 +773,7 @@ func (c *client) subscribeCmd(cmd *SubscribeClientCommand) (*response, error) {
 			}
 		} else {
 			// Client don't want to recover messages yet, we just return last message id to him here.
-			channelID := c.app.channelID(channel)
-			lastMessageID, err := c.app.engine.lastMessageID(channelID)
+			lastMessageID, err := c.app.lastMessageID(channel)
 			if err != nil {
 				logger.ERROR.Println(err)
 			} else {

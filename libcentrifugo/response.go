@@ -39,7 +39,7 @@ func newResponse(method string) *response {
 // order - from first executed to last one
 type multiResponse []*response
 
-// PresenseBody represents body of response in case of successful presence command.
+// PresenceBody represents body of response in case of successful presence command.
 type PresenceBody struct {
 	Channel Channel               `json:"channel"`
 	Data    map[ConnID]ClientInfo `json:"data"`
@@ -90,6 +90,14 @@ type UnsubscribeBody struct {
 type PublishBody struct {
 	Channel Channel `json:"channel"`
 	Status  bool    `json:"status"`
+}
+
+// DisconnectBody represents body of disconnect response when we want to tell
+// client to disconnect. Optionally we can give client an advice to continue
+// reconnecting after receiving this message.
+type DisconnectBody struct {
+	Reason    string `json:"reason"`
+	Reconnect bool   `json:"reconnect"`
 }
 
 // PingBody represents body of response in case of successful ping command.

@@ -118,9 +118,9 @@ func (e *TarantoolEngine) run() error {
 	return nil
 }
 
-func (e *TarantoolEngine) publish(chID ChannelID, message []byte) error {
+func (e *TarantoolEngine) publish(chID ChannelID, message []byte) (bool, error) {
 	// Not implemented.
-	return nil
+	return true, nil
 }
 
 func (e *TarantoolEngine) subscribe(chID ChannelID) error {
@@ -164,12 +164,12 @@ func (e *TarantoolEngine) presence(chID ChannelID) (map[ConnID]ClientInfo, error
 	return map[ConnID]ClientInfo{}, nil
 }
 
-func (e *TarantoolEngine) addHistory(chID ChannelID, message Message, opts historyOptions) error {
+func (e *TarantoolEngine) addHistory(chID ChannelID, message Message, opts addHistoryOpts) error {
 	// not implemented
 	return nil
 }
 
-func (e *TarantoolEngine) history(chID ChannelID) ([]Message, error) {
+func (e *TarantoolEngine) history(chID ChannelID, opts historyOpts) ([]Message, error) {
 	// not implemented
 	return []Message{}, nil
 }

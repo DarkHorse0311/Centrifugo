@@ -42,37 +42,6 @@ type TarantoolPoolConfig struct {
 	Opts     tarantool.Opts
 }
 
-/* MessageType
-{
-	"body": {
-		"uid":"026c380d-13e1-47d9-42d2-e2dc0e41e8d5",
-		"timestamp":"1440434259",
-		"info":{
-			"user":"3",
-			"client":"83309b33-deb7-48ff-76c6-04b10e6a6523",
-			"default_info":null,
-			"channel_info": {
-				"channel_extra_info_example":"you can add additional JSON data when authorizing"
-			}
-		},
-		"channel":"$3_0",
-		"data": {
-			"Action":"mark",
-			"Data":["00000000000000395684"]
-		},
-		"client":"83309b33-deb7-48ff-76c6-04b10e6a6523"
-	},
-	"error":null,
-	"method":"message"
-}
-*/
-
-type MessageType struct {
-	Body   Message
-	Error  string `json:error`
-	Method string `json:method`
-}
-
 func NewTarantoolEngine(app *Application, conf TarantoolEngineConfig) *TarantoolEngine {
 	logger.INFO.Printf("Initializing tarantool connection pool...")
 	pool, err := newTarantoolPool(conf.PoolConfig)
@@ -115,11 +84,42 @@ func (e *TarantoolEngine) name() string {
 }
 
 func (e *TarantoolEngine) run() error {
+	go e.runPubSub()
 	return nil
 }
 
+func (e *TarantoolEngine) runPubSub() {
+	conn, err := e.pool.get()
+	if err != nil {
+		logger.ERROR.Printf("pubsub tarantool pool error: %v\n", err.Error())
+		return
+	}
+
+	for {
+		response, err := conn.Call("bpop", []interface{}{100})
+		if err != nil {
+			logger.ERROR.Printf("publish tarantool pool error: %v\n", err.Error())
+			return
+		}
+		for _, message := range response.Data {
+			println(message)
+		}
+	}
+}
+
 func (e *TarantoolEngine) publish(chID ChannelID, message []byte) (bool, error) {
-	// Not implemented.
+
+	conn, err := e.pool.get()
+	if err != nil {
+		logger.ERROR.Printf("publish tarantool pool error: %v\n", err.Error())
+		return false, err
+	}
+
+	_, err = conn.Call("publish", []interface{}{chID, message})
+	if err != nil {
+		return false, err
+	}
+
 	return true, nil
 }
 
@@ -130,7 +130,7 @@ func (e *TarantoolEngine) subscribe(chID ChannelID) error {
 		return err
 	}
 
-	_, err = conn.Call("notification_subscribe", []interface{}{})
+	_, err = conn.Call("subscribe", []interface{}{e.app.uid, chID})
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func (e *TarantoolEngine) unsubscribe(chID ChannelID) error {
 		return err
 	}
 
-	_, err = conn.Call("notification_unsubscribe", []interface{}{})
+	_, err = conn.Call("unsubscribe", []interface{}{e.app.uid, chID})
 	return err
 }
 
@@ -172,11 +172,6 @@ func (e *TarantoolEngine) addHistory(chID ChannelID, message Message, opts addHi
 func (e *TarantoolEngine) history(chID ChannelID, opts historyOpts) ([]Message, error) {
 	// not implemented
 	return []Message{}, nil
-}
-
-func (e *TarantoolEngine) lastMessageID(chID ChannelID) (MessageID, error) {
-	// not implemented
-	return MessageID(""), nil
 }
 
 func (e *TarantoolEngine) channels() ([]ChannelID, error) {

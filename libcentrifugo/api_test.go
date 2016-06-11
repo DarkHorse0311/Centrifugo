@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"errors"
+	"github.com/buger/jsonparser"
 )
 
 func TestAPICmd(t *testing.T) {
@@ -405,6 +408,114 @@ func BenchmarkAPIRequestBroadcastMany(b *testing.B) {
 		_, err := app.processAPIData(jsonData)
 		if err != nil {
 			b.Error(err)
+		}
+	}
+}
+
+var broadcastData = []byte(`{"channels": ["1", "2", "3", "4", "5", "6"], "data": {"input": "test"}, "client": "xxx"}`)
+
+func BenchmarkBroadcastUnmarshal(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var cmd broadcastAPICommand
+		err := json.Unmarshal(broadcastData, &cmd)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func BenchmarkBroadcastUnmarshalJsonparser(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var cmd broadcastAPICommand
+		var parseError error
+
+		jsonparser.EachKey(broadcastData, func(idx int, value []byte, vType jsonparser.ValueType, err error) {
+			switch idx {
+			case 0: // channels
+				jsonparser.ArrayEach(value, func(v []byte, vt jsonparser.ValueType, offset int, err error) {
+					if vt != jsonparser.String {
+						parseError = errors.New("channel must be string")
+						return
+					}
+					cmd.Channels = append(cmd.Channels, Channel(v))
+				})
+			case 1: // data
+				if vType == jsonparser.Null {
+					cmd.Data = json.RawMessage([]byte("null"))
+				} else if vType == jsonparser.String {
+					cmd.Data = json.RawMessage([]byte(fmt.Sprintf("\"%s\"", string(value))))
+				} else {
+					cmd.Data = json.RawMessage(value)
+				}
+			case 2: // client
+				if err != nil && err != jsonparser.KeyPathNotFoundError {
+					parseError = err
+					return
+				}
+				if vType != jsonparser.String {
+					parseError = errors.New("client must be string")
+					return
+				}
+				cmd.Client = ConnID(value)
+			}
+		}, broadcastKeys...)
+		if parseError != nil {
+			panic(parseError)
+		}
+	}
+}
+
+var publishData = []byte(`{"channel": "1", "data": {"input": "test"}, "client": "xxx"}`)
+
+func BenchmarkPublishUnmarshal(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var cmd publishAPICommand
+		err := json.Unmarshal(publishData, &cmd)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func BenchmarkPublishUnmarshalJsonparser(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		var cmd publishAPICommand
+		var parseError error
+
+		jsonparser.EachKey(publishData, func(idx int, value []byte, vType jsonparser.ValueType, err error) {
+			switch idx {
+			case 0: // channel
+				if err != nil {
+					parseError = err
+					return
+				}
+				if vType != jsonparser.String {
+					parseError = errors.New("channel must be string")
+					return
+				}
+				cmd.Channel = Channel(value)
+			case 1: // data
+				if vType == jsonparser.Null {
+					cmd.Data = []byte("null")
+				} else if vType == jsonparser.String {
+					cmd.Data = []byte(fmt.Sprintf("\"%s\"", string(value)))
+				} else {
+					cmd.Data = value
+				}
+			case 2: // client
+				if err != nil && err != jsonparser.KeyPathNotFoundError {
+					parseError = err
+					return
+				}
+				if vType != jsonparser.String {
+					parseError = errors.New("client must be string")
+					return
+				}
+				cmd.Client = ConnID(value)
+			}
+		}, publishKeys...)
+		if parseError != nil {
+			panic(parseError)
 		}
 	}
 }

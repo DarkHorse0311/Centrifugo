@@ -4,7 +4,22 @@ import (
 	"encoding/json"
 
 	"github.com/FZambia/go-logger"
+
+	"fmt"
+	"github.com/buger/jsonparser"
 )
+
+var publishKeys = [][]string{
+	[]string{"channel"},
+	[]string{"data"},
+	[]string{"client"},
+}
+
+var broadcastKeys = [][]string{
+	[]string{"channels"},
+	[]string{"data"},
+	[]string{"client"},
+}
 
 // apiCmd builds API command and dispatches it into correct handler method.
 func (app *Application) apiCmd(command apiCommand) (response, error) {
@@ -13,12 +28,11 @@ func (app *Application) apiCmd(command apiCommand) (response, error) {
 	var resp response
 
 	method := command.Method
-	params := command.Params
 
 	switch method {
 	case "publish":
 		var cmd publishAPICommand
-		err = json.Unmarshal(params, &cmd)
+		err = json.Unmarshal(command.Params, &cmd)
 		if err != nil {
 			logger.ERROR.Println(err)
 			return nil, ErrInvalidMessage
@@ -26,15 +40,50 @@ func (app *Application) apiCmd(command apiCommand) (response, error) {
 		resp, err = app.publishCmd(&cmd)
 	case "broadcast":
 		var cmd broadcastAPICommand
-		err = json.Unmarshal(params, &cmd)
-		if err != nil {
-			logger.ERROR.Println(err)
-			return nil, ErrInvalidMessage
+		var parseError error
+
+		jsonparser.EachKey(command.Params, func(idx int, value []byte, vType jsonparser.ValueType, err error) {
+			switch idx {
+			case 0: // channels
+				jsonparser.ArrayEach(value, func(v []byte, vt jsonparser.ValueType, offset int, err error) {
+					if vt != jsonparser.String {
+						parseError = ErrInvalidMessage
+						return
+					}
+					cmd.Channels = append(cmd.Channels, Channel(v))
+				})
+			case 1: // data
+				if vType == jsonparser.Null {
+					cmd.Data = json.RawMessage([]byte("null"))
+				} else if vType == jsonparser.String {
+					cmd.Data = json.RawMessage([]byte(fmt.Sprintf("\"%s\"", string(value))))
+				} else {
+					cmd.Data = json.RawMessage(value)
+				}
+			case 2: // client
+				if err != nil {
+					if err == jsonparser.KeyPathNotFoundError {
+						return
+					}
+					logger.ERROR.Println(err)
+					parseError = ErrInvalidMessage
+					return
+				}
+				if vType != jsonparser.String {
+					logger.ERROR.Println("client must be string")
+					parseError = ErrInvalidMessage
+					return
+				}
+				cmd.Client = ConnID(value)
+			}
+		}, broadcastKeys...)
+		if parseError != nil {
+			return nil, parseError
 		}
 		resp, err = app.broadcastCmd(&cmd)
 	case "unsubscribe":
 		var cmd unsubscribeAPICommand
-		err = json.Unmarshal(params, &cmd)
+		err = json.Unmarshal(command.Params, &cmd)
 		if err != nil {
 			logger.ERROR.Println(err)
 			return nil, ErrInvalidMessage
@@ -42,7 +91,7 @@ func (app *Application) apiCmd(command apiCommand) (response, error) {
 		resp, err = app.unsubcribeCmd(&cmd)
 	case "disconnect":
 		var cmd disconnectAPICommand
-		err = json.Unmarshal(params, &cmd)
+		err = json.Unmarshal(command.Params, &cmd)
 		if err != nil {
 			logger.ERROR.Println(err)
 			return nil, ErrInvalidMessage
@@ -50,7 +99,7 @@ func (app *Application) apiCmd(command apiCommand) (response, error) {
 		resp, err = app.disconnectCmd(&cmd)
 	case "presence":
 		var cmd presenceAPICommand
-		err = json.Unmarshal(params, &cmd)
+		err = json.Unmarshal(command.Params, &cmd)
 		if err != nil {
 			logger.ERROR.Println(err)
 			return nil, ErrInvalidMessage
@@ -58,7 +107,7 @@ func (app *Application) apiCmd(command apiCommand) (response, error) {
 		resp, err = app.presenceCmd(&cmd)
 	case "history":
 		var cmd historyAPICommand
-		err = json.Unmarshal(params, &cmd)
+		err = json.Unmarshal(command.Params, &cmd)
 		if err != nil {
 			logger.ERROR.Println(err)
 			return nil, ErrInvalidMessage

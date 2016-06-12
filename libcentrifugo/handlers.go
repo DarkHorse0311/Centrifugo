@@ -12,6 +12,9 @@ import (
 	"github.com/centrifugal/centrifugo/libcentrifugo/auth"
 	"github.com/gorilla/websocket"
 	"gopkg.in/igm/sockjs-go.v2/sockjs"
+
+	"errors"
+	"github.com/buger/jsonparser"
 )
 
 // HandlerFlag is a bit mask of handlers that must be enabled in mux.
@@ -238,6 +241,67 @@ var (
 	objectJSONPrefix byte = '{'
 )
 
+var apiCommandKeys = [][]string{
+	[]string{"uid"},
+	[]string{"method"},
+	[]string{"params"},
+}
+
+func cmdFromObject(msg []byte) (apiCommand, error) {
+	var command apiCommand
+	var parseError error
+
+	jsonparser.EachKey(msg, func(idx int, value []byte, vType jsonparser.ValueType, err error) {
+		switch idx {
+		case 0: // uid
+			if err != nil {
+				if err == jsonparser.KeyPathNotFoundError {
+					// uid is optional.
+					return
+				}
+				parseError = err
+				return
+			}
+			if vType != jsonparser.String {
+				parseError = errors.New("uid must be string")
+				return
+			}
+			command.UID = string(value)
+		case 1: // method
+			if err != nil {
+				parseError = err
+				return
+			}
+			if vType != jsonparser.String {
+				parseError = errors.New("method must be string")
+				return
+			}
+			command.Method = string(value)
+		case 2: // params
+			if err != nil {
+				if err == jsonparser.KeyPathNotFoundError {
+					return
+				}
+				parseError = err
+				return
+			}
+			if len(value) > 0 {
+				if vType != jsonparser.Object {
+					parseError = errors.New("params must be object")
+					return
+				}
+				command.Params = json.RawMessage(value)
+			}
+		}
+	}, apiCommandKeys...)
+
+	if parseError != nil {
+		logger.ERROR.Println(parseError)
+		return command, ErrInvalidMessage
+	}
+	return command, nil
+}
+
 func cmdFromRequestMsg(msg []byte) ([]apiCommand, error) {
 	var commands []apiCommand
 
@@ -250,22 +314,37 @@ func cmdFromRequestMsg(msg []byte) ([]apiCommand, error) {
 	switch firstByte {
 	case objectJSONPrefix:
 		// single command request
-		var command apiCommand
-		err := json.Unmarshal(msg, &command)
+		command, err := cmdFromObject(msg)
 		if err != nil {
-			return nil, err
+			return commands, err
 		}
 		commands = append(commands, command)
+		return commands, nil
 	case arrayJSONPrefix:
 		// array of commands received
-		err := json.Unmarshal(msg, &commands)
-		if err != nil {
-			return nil, err
+		var parseErr error
+		err := jsonparser.ArrayEach(msg, func(value []byte, vType jsonparser.ValueType, offset int, err error) {
+			if parseErr != nil {
+				return
+			}
+			if vType != jsonparser.Object {
+				parseErr = errors.New("command must be object")
+				return
+			}
+			command, err := cmdFromObject(value)
+			if err != nil {
+				parseErr = err
+				return
+			}
+			commands = append(commands, command)
+		})
+		if parseErr != nil {
+			return commands, parseErr
 		}
+		return commands, err
 	default:
-		return nil, ErrInvalidMessage
+		return nil, errors.New("object or array expected in API request")
 	}
-	return commands, nil
 }
 
 func (app *Application) processAPIData(data []byte) ([]byte, error) {

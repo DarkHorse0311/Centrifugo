@@ -2,6 +2,7 @@ package libcentrifugo
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"net/http/pprof"
@@ -9,12 +10,10 @@ import (
 	"time"
 
 	"github.com/FZambia/go-logger"
+	"github.com/buger/jsonparser"
 	"github.com/centrifugal/centrifugo/libcentrifugo/auth"
 	"github.com/gorilla/websocket"
 	"gopkg.in/igm/sockjs-go.v2/sockjs"
-
-	"errors"
-	"github.com/buger/jsonparser"
 )
 
 // HandlerFlag is a bit mask of handlers that must be enabled in mux.
@@ -296,8 +295,7 @@ func cmdFromObject(msg []byte) (apiCommand, error) {
 	}, apiCommandKeys...)
 
 	if parseError != nil {
-		logger.ERROR.Println(parseError)
-		return command, ErrInvalidMessage
+		return command, parseError
 	}
 	return command, nil
 }

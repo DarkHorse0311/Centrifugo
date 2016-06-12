@@ -2,10 +2,10 @@ package libcentrifugo
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/FZambia/go-logger"
-
-	"fmt"
 	"github.com/buger/jsonparser"
 )
 
@@ -23,31 +23,66 @@ var broadcastKeys = [][]string{
 
 // apiCmd builds API command and dispatches it into correct handler method.
 func (app *Application) apiCmd(command apiCommand) (response, error) {
-
 	var err error
 	var resp response
-
 	method := command.Method
 
 	switch method {
 	case "publish":
 		var cmd publishAPICommand
-		err = json.Unmarshal(command.Params, &cmd)
-		if err != nil {
-			logger.ERROR.Println(err)
-			return nil, ErrInvalidMessage
+		var parseError error
+		jsonparser.EachKey(command.Params, func(idx int, value []byte, vType jsonparser.ValueType, err error) {
+			switch idx {
+			case 0: // channel
+				if err != nil {
+					parseError = err
+					return
+				}
+				if vType != jsonparser.String {
+					parseError = errors.New("channel must be string")
+					return
+				}
+				cmd.Channel = Channel(value)
+			case 1: // data
+				if vType == jsonparser.Null {
+					cmd.Data = []byte("null")
+				} else if vType == jsonparser.String {
+					cmd.Data = []byte(fmt.Sprintf("\"%s\"", string(value)))
+				} else {
+					cmd.Data = value
+				}
+			case 2: // client
+				if err != nil {
+					if err == jsonparser.KeyPathNotFoundError {
+						// client is optional.
+						return
+					}
+					parseError = err
+					return
+				}
+				if vType != jsonparser.String {
+					parseError = errors.New("client must be string")
+					return
+				}
+				cmd.Client = ConnID(value)
+			}
+		}, publishKeys...)
+		if parseError != nil {
+			return nil, parseError
 		}
 		resp, err = app.publishCmd(&cmd)
 	case "broadcast":
 		var cmd broadcastAPICommand
 		var parseError error
-
 		jsonparser.EachKey(command.Params, func(idx int, value []byte, vType jsonparser.ValueType, err error) {
 			switch idx {
 			case 0: // channels
 				jsonparser.ArrayEach(value, func(v []byte, vt jsonparser.ValueType, offset int, err error) {
+					if parseError != nil {
+						return
+					}
 					if vt != jsonparser.String {
-						parseError = ErrInvalidMessage
+						parseError = errors.New("channel must be string")
 						return
 					}
 					cmd.Channels = append(cmd.Channels, Channel(v))
@@ -63,15 +98,14 @@ func (app *Application) apiCmd(command apiCommand) (response, error) {
 			case 2: // client
 				if err != nil {
 					if err == jsonparser.KeyPathNotFoundError {
+						// client is optional.
 						return
 					}
-					logger.ERROR.Println(err)
-					parseError = ErrInvalidMessage
+					parseError = err
 					return
 				}
 				if vType != jsonparser.String {
-					logger.ERROR.Println("client must be string")
-					parseError = ErrInvalidMessage
+					parseError = errors.New("client must be string")
 					return
 				}
 				cmd.Client = ConnID(value)

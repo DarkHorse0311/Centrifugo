@@ -306,6 +306,10 @@ func cmdFromClientMsg(msgBytes []byte) ([]clientCommand, error) {
 }
 
 func (c *client) message(msg []byte) error {
+	started := time.Now()
+	defer func() {
+		c.app.metrics.histograms.RecordMicroseconds("client_api", time.Now().Sub(started))
+	}()
 	c.app.metrics.NumClientRequests.Inc()
 	c.app.metrics.BytesClientIn.Add(int64(len(msg)))
 
@@ -386,7 +390,8 @@ func (c *client) handleCommands(commands []clientCommand) error {
 	}
 	jsonResp, err := json.Marshal(mr)
 	if err != nil {
-		return err
+		logger.ERROR.Println(err)
+		return ErrInvalidMessage
 	}
 	err = c.send(jsonResp)
 	return err

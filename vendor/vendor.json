@@ -262,6 +262,12 @@
 			"revisionTime": "2015-01-07T20:56:47Z"
 		},
 		{
+			"checksumSHA1": "W7DNxQwdGQ2YO3PR3jARJg6Iqsw=",
+			"path": "github.com/codahale/hdrhistogram",
+			"revision": "f8ad88b59a584afeee9d334eff879b104439117b",
+			"revisionTime": "2016-04-25T23:15:03Z"
+		},
+		{
 			"checksumSHA1": "+Qd5km5Hgsg8P3LXL8xX6YTZVvs=",
 			"path": "github.com/coreos/go-etcd/etcd",
 			"revision": "73a8ef737e8ea002281a28b4cb92a1de121ad4c6",
@@ -382,12 +388,6 @@
 			"revision": "a5152d67cf63cbfb5d992a395458722a45194715"
 		},
 		{
-			"checksumSHA1": "uG/irJIgifYdc+HC1kF6Gwgn7kU=",
-			"path": "github.com/oxtoacart/bpool",
-			"revision": "4e1c5567d7c2dd59fa4c7c83d34c2f3528b025d6",
-			"revisionTime": "2015-07-12T13:31:11Z"
-		},
-		{
 			"path": "github.com/satori/go.uuid",
 			"revision": "08f0718b61e95ddba0ade3346725fe0e4bf28ca6"
 		},
@@ -418,6 +418,12 @@
 		{
 			"path": "github.com/stretchr/testify/assert",
 			"revision": "dab07ac62d4905d3e48d17dc549c684ac3b7c15a"
+		},
+		{
+			"checksumSHA1": "UH0Z+bfd+2InukxI++fxbYa0/ME=",
+			"path": "github.com/valyala/bytebufferpool",
+			"revision": "a517d2d1537f5b02e9f6c23d4794160c6c2bc157",
+			"revisionTime": "2016-07-01T19:46:08Z"
 		},
 		{
 			"checksumSHA1": "Jcarmr4WdTvVAWBssHA33O6NaeI=",

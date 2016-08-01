@@ -373,7 +373,10 @@ func (app *Application) processAPIData(data []byte) ([]byte, error) {
 
 // APIHandler is responsible for receiving API commands over HTTP.
 func (app *Application) APIHandler(w http.ResponseWriter, r *http.Request) {
-
+	started := time.Now()
+	defer func() {
+		app.metrics.histograms.RecordMicroseconds("http_api", time.Now().Sub(started))
+	}()
 	app.metrics.NumAPIRequests.Inc()
 
 	contentType := r.Header.Get("Content-Type")
@@ -383,7 +386,8 @@ func (app *Application) APIHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	if strings.HasPrefix(strings.ToLower(contentType), "application/json") {
-		// json request
+		// json request, this is a prefferred more performant way, as parsing
+		// Form Value rather expensive (about 30% speed up).
 		sign = r.Header.Get("X-API-Sign")
 		defer r.Body.Close()
 		data, err = ioutil.ReadAll(r.Body)

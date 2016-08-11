@@ -66,7 +66,7 @@ func NewApplication(config *Config) (*Application, error) {
 		admins:     newAdminHub(),
 		nodes:      make(map[string]nodeInfo),
 		started:    time.Now().Unix(),
-		metrics:    &metricsRegistry{},
+		metrics:    newMetricsRegistry(),
 		shutdownCh: make(chan struct{}),
 	}
 	return app, nil
@@ -684,7 +684,7 @@ func (app *Application) History(ch Channel) ([]Message, error) {
 		return []Message{}, ErrNotAvailable
 	}
 
-	history, err := app.engine.history(ch, historyOpts{})
+	history, err := app.engine.history(ch, 0)
 	if err != nil {
 		logger.ERROR.Println(err)
 		return []Message{}, ErrInternalServerError
@@ -693,7 +693,7 @@ func (app *Application) History(ch Channel) ([]Message, error) {
 }
 
 func (app *Application) lastMessageID(ch Channel) (MessageID, error) {
-	history, err := app.engine.history(ch, historyOpts{Limit: 1})
+	history, err := app.engine.history(ch, 1)
 	if err != nil {
 		return MessageID(""), err
 	}

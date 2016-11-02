@@ -1,6 +1,3 @@
 package main
 
-const (
-	// VERSION of Centrifugo server.
-	VERSION = "1.5.1"
-)
+var version string

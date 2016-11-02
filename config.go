@@ -19,7 +19,7 @@ import (
 // newConfig creates new libcentrifugo.Config using viper.
 func newConfig() *libcentrifugo.Config {
 	cfg := &libcentrifugo.Config{}
-	cfg.Version = VERSION
+	cfg.Version = version
 	cfg.Name = getApplicationName()
 	cfg.Debug = viper.GetBool("debug")
 	cfg.Admin = viper.GetBool("admin") || viper.GetBool("web")

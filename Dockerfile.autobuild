@@ -1,0 +1,18 @@
+FROM golang:1.7
+
+ADD . /go/src/github.com/centrifugal/centrifugo
+
+RUN \
+  SRC_DIR=/go/src/github.com/centrifugal/centrifugo && \
+  BRANCH=$(cd $SRC_DIR && git symbolic-ref --short HEAD) && \
+  REVISION=$(cd $SRC_DIR && git rev-parse --short HEAD) && \
+  TIME=$(date '+%Y-%m-%dT%H:%M') && \
+  VERSION="$BRANCH#$REVISION($TIME)" && \
+  echo "VERSION: $VERSION" && \
+  go install -ldflags "-X main.version=$VERSION" github.com/centrifugal/centrifugo
+
+RUN rm -r /go/src
+
+EXPOSE 8000
+
+CMD centrifugo

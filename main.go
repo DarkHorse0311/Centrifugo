@@ -177,7 +177,7 @@ func Main() {
 				"debug", "engine", "insecure", "insecure_api", "web", "admin", "admin_password", "admin_secret",
 				"insecure_web", "insecure_admin", "secret", "connection_lifetime", "watch", "publish", "anonymous",
 				"join_leave", "presence", "recover", "history_size", "history_lifetime", "history_drop_inactive",
-				"redis_host", "redis_port", "redis_url",
+				"redis_host", "redis_port", "redis_url", "channel_prefix",
 			}
 			for _, env := range bindEnvs {
 				viper.BindEnv(env)

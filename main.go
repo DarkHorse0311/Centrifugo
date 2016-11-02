@@ -195,7 +195,7 @@ func Main() {
 
 			viper.SetConfigFile(configFile)
 
-			logger.INFO.Printf("Centrifugo version: %s", VERSION)
+			logger.INFO.Printf("Centrifugo version: %s", version)
 			logger.INFO.Printf("Process PID: %d", os.Getpid())
 
 			absConfPath, err := filepath.Abs(configFile)
@@ -439,7 +439,7 @@ func Main() {
 		Short: "Centrifugo version number",
 		Long:  `Print the version number of Centrifugo`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("Centrifugo v%s (Go version: %s)\n", VERSION, runtime.Version())
+			fmt.Printf("Centrifugo v%s (Go version: %s)\n", version, runtime.Version())
 		},
 	}
 

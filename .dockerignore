@@ -1,3 +1,2 @@
-.git
-.gitattributes
-.gitignore
+Dockerfile
+Dockerfile.autobuild

@@ -1,2 +1,3 @@
 extras/* linguist-vendored
 Godeps/* linguist-vendored
+Dockerfile
